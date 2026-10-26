@@ -11,11 +11,11 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install -r requirements.txt \
     && useradd --create-home --uid 10001 appuser
 
-COPY --chown=appuser:appuser app.py .
+COPY --chown=appuser:appuser app.py serve.py ./
 COPY --chown=appuser:appuser cee ./cee
 
 USER appuser
 
 EXPOSE 8501
 
-CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]
+CMD ["python", "serve.py"]
