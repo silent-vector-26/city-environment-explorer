@@ -1,0 +1,151 @@
+name: Deploy Azure Container App
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: azure-container-app-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate application and container
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Validate Bicep template
+        run: |
+          az bicep install
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+
+      - name: Build container image
+        run: docker build --tag city-environment-explorer:validation .
+
+  deploy:
+    name: Provision and deploy
+    needs: validate
+    runs-on: ubuntu-latest
+    environment:
+      name: azure-production
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'eastus2' }}
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+      AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+      IMAGE_NAME: city-environment-explorer
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in AZURE_RESOURCE_GROUP AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::GitHub Environment variable $name is required."
+              exit 1
+            fi
+          done
+          if [[ -n "$AZURE_OPENAI_ENDPOINT" && -z "$AZURE_OPENAI_DEPLOYMENT" ]] \
+            || [[ -z "$AZURE_OPENAI_ENDPOINT" && -n "$AZURE_OPENAI_DEPLOYMENT" ]]; then
+            echo "::error::Set both AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT, or leave both unset."
+            exit 1
+          fi
+
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Bicep CLI
+        run: az bicep install
+
+      - name: Verify resource group exists
+        run: az group show --name "$AZURE_RESOURCE_GROUP" --output none
+
+      - name: Provision registry and Container Apps environment
+        id: foundation
+        shell: bash
+        run: |
+          set -euo pipefail
+          az deployment group create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "cee-foundation-${GITHUB_RUN_ID}" \
+            --template-file infra/main.bicep \
+            --parameters location="$AZURE_LOCATION" \
+                         deployApp=false \
+            --output json > deployment.json
+          login_server="$(jq -r '.properties.outputs.acrLoginServer.value' deployment.json)"
+          acr_name="$(jq -r '.properties.outputs.acrName.value' deployment.json)"
+          app_name="$(jq -r '.properties.outputs.containerAppName.value' deployment.json)"
+          environment_name="$(jq -r '.properties.outputs.containerAppsEnvironmentName.value' deployment.json)"
+          echo "login_server=$login_server" >> "$GITHUB_OUTPUT"
+          {
+            echo "ACR_NAME=$acr_name"
+            echo "CONTAINER_APP_NAME=$app_name"
+            echo "CONTAINER_APPS_ENVIRONMENT=$environment_name"
+          } >> "$GITHUB_ENV"
+
+      - name: Build and push application image
+        run: |
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "$IMAGE_NAME:$IMAGE_TAG" \
+            .
+
+      - name: Provision Container App and deploy image
+        env:
+          ACR_LOGIN_SERVER: ${{ steps.foundation.outputs.login_server }}
+        run: |
+          az deployment group create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "cee-app-${GITHUB_RUN_ID}" \
+            --template-file infra/main.bicep \
+            --parameters location="$AZURE_LOCATION" \
+                         acrName="$ACR_NAME" \
+                         containerAppName="$CONTAINER_APP_NAME" \
+                         containerImage="$ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG" \
+                         containerAppsEnvironmentName="$CONTAINER_APPS_ENVIRONMENT" \
+                         azureOpenAiEndpoint="$AZURE_OPENAI_ENDPOINT" \
+                         azureOpenAiDeployment="$AZURE_OPENAI_DEPLOYMENT" \
+                         deployApp=true \
+            --output none
+
+      - name: Show deployed endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          fqdn="$(az containerapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$CONTAINER_APP_NAME" \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)"
+          echo "Application is available at https://$fqdn"
