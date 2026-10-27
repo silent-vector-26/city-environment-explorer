@@ -432,7 +432,14 @@ flowchart TB
 - **Slow upstream:** AirNow takes 12 to 80 seconds; the cache decouples requests from it.
 - **Warm cache:** `minReplicas=1` keeps the in-memory snapshot alive; scale-to-zero would force a 1 to 2 minute cold start.
 - **Failure handling:** last good snapshot is retained; failures retry in 5 minutes; the UI falls back to labeled sample data.
-- **Limits of the design:** the cache is per replica, so `maxReplicas` is 1; scaling out would warm a second cache and call AirNow twice. Acceptable for a demo.
+- The cache is per replica, so `maxReplicas` is 1; scaling out would warm a second cache and call AirNow twice. Acceptable for a demo.
+
+### 9.1 Observability
+
+- **Tracing:** OpenTelemetry spans `cee.generate_summary` and `cee.load_airnow` ([cee/telemetry.py](../cee/telemetry.py)), exported to Application Insights only when `APPLICATIONINSIGHTS_CONNECTION_STRING` is set. Export setup failures are logged and never stop the app.
+- **Attributes:** model deployment, token counts, finish reason, outcome, row counts. No prompts, evidence or model output are recorded; a test enforces this.
+- **Dashboard:** a shared Azure Workbook ([infra/workbook.bicep](../infra/workbook.bicep)) shows calls per day, p50/p95 latency, tokens, outcomes and AirNow load time.
+- **Cost:** Application Insights shares the Log Analytics workspace, so the 1 GB per day cap applies. A managed Grafana instance was deferred (DP-57) because it bills per hour.
 
 ## 10. Cost optimization
 
@@ -505,6 +512,7 @@ flowchart TD
 | AirNow parsing, daily aggregation, error handling | [tests/test_sources.py](../tests/test_sources.py) |
 | Cache refresh and retry behavior | [tests/test_cache.py](../tests/test_cache.py) |
 | Groundedness checker (offline) | [tests/test_evaluation.py](../tests/test_evaluation.py) |
+| Telemetry setup and span contents | [tests/test_telemetry.py](../tests/test_telemetry.py) |
 | Groundedness of live summaries | `python -m evals.run_eval`; six cases in [evals/cases.py](../evals/cases.py), checks in [cee/evaluation.py](../cee/evaluation.py) |
 | Bicep and container build | CI `validate` job |
 
@@ -537,7 +545,7 @@ flowchart TD
 
 ## 14. Open items
 
-- Tracing and telemetry for AI calls (DP-55).
+- Grafana dashboard over Application Insights (DP-57, optional).
 - Run the groundedness evaluation (DP-56, implemented) in CI on a schedule.
 - Persisting AirNow history (DP-54).
 - Budget alerts (DP-52): implemented in the Bicep; close after deployment.

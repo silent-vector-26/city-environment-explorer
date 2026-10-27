@@ -12,8 +12,10 @@ import sys
 from streamlit.web import cli as stcli
 
 from cee.cache import live_cache
+from cee.telemetry import configure_telemetry
 
 if __name__ == "__main__":
+    configure_telemetry()
     api_key = os.getenv("AIRNOW_API_KEY", "").strip()
     if api_key:
         live_cache.start(api_key)

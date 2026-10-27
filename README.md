@@ -97,6 +97,20 @@ The live run calls the model and may incur a small charge. Results are written t
 flag a single-observation record as insufficient; the prompt was tightened and the
 set now passes 18 of 18 runs.
 
+## Telemetry
+
+The app emits OpenTelemetry spans for the Azure OpenAI summary call
+(`cee.generate_summary`: model, token counts, finish reason, outcome) and for the
+AirNow load (`cee.load_airnow`: days, rows). When
+`APPLICATIONINSIGHTS_CONNECTION_STRING` is set, they are exported to Application
+Insights; without it, tracing is a no-op. Prompts, evidence and model output are
+never recorded.
+
+The Bicep deploys Application Insights on the existing Log Analytics workspace
+and a shared Azure Workbook, "City Environment Explorer telemetry" (calls per day,
+p50/p95 latency, tokens, outcomes, AirNow load time). Telemetry volume is small and
+is covered by the 1 GB per day log cap.
+
 ## Deploy to Azure Container Apps
 
 The deployment uses Bicep and a GitHub Actions workflow with GitHub OIDC. It
@@ -169,7 +183,7 @@ billed at a lower rate); confirm in Cost Management. The current deployment sets
 
 - Persist AirNow history (for example in Blob Storage) so restarts do not
   require a full reload.
-- Add tracing for the Azure OpenAI calls.
+- Add a Grafana dashboard over the same telemetry (DP-57, optional).
 
 ## Documentation
 
