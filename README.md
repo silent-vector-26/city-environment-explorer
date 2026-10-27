@@ -133,5 +133,9 @@ charges. Review current pricing and configure budget alerts.
   require a full reload.
 - Add tracing and a small groundedness evaluation set for the summaries.
 
-See the [Software Requirements Specification](docs/InsightMiner_SRS_v1.0.0.md)
-for the agreed scope, requirements, assumptions, and acceptance criteria.
+## Documentation
+
+- [Software Requirements Specification](docs/InsightMiner_SRS_v1.0.0.md):
+  scope, requirements, assumptions, and acceptance criteria.
+- [Software Design Description](docs/CEE_SDD_v1.0.0.md): architecture, data
+  flow, AI grounding, deployment, and security, with Mermaid diagrams.
