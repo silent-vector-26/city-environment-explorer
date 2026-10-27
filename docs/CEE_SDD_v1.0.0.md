@@ -325,6 +325,7 @@ stateDiagram-v2
 | No silent fallback | A configured model failure is shown, not hidden behind the fallback | SRS 6.2 |
 | Model parameters | GPT-5 family rejects `temperature`; use `max_completion_tokens=600` | design |
 | Output format | Markdown with bold labels and bullets, no headings; rendered with `st.markdown` | UX |
+| Evaluation | Six fixed cases checked for citations, invented numbers, advice, causal and real-time claims, headings, required wording; 18 of 18 live runs passed. The first run showed the model omitted the insufficiency statement for one observation, so the prompt now requires it for fewer than 7 observations | FR-010 to FR-012 |
 
 ## 7. Deployment design
 
@@ -503,6 +504,8 @@ flowchart TD
 | AI prompt, citation validation | [tests/test_ai.py](../tests/test_ai.py) |
 | AirNow parsing, daily aggregation, error handling | [tests/test_sources.py](../tests/test_sources.py) |
 | Cache refresh and retry behavior | [tests/test_cache.py](../tests/test_cache.py) |
+| Groundedness checker (offline) | [tests/test_evaluation.py](../tests/test_evaluation.py) |
+| Groundedness of live summaries | `python -m evals.run_eval`; six cases in [evals/cases.py](../evals/cases.py), checks in [cee/evaluation.py](../cee/evaluation.py) |
 | Bicep and container build | CI `validate` job |
 
 ## 12. Requirement traceability
@@ -535,7 +538,7 @@ flowchart TD
 ## 14. Open items
 
 - Tracing and telemetry for AI calls (DP-55).
-- Groundedness evaluation set (DP-56).
+- Run the groundedness evaluation (DP-56, implemented) in CI on a schedule.
 - Persisting AirNow history (DP-54).
 - Budget alerts (DP-52): implemented in the Bicep; close after deployment.
 - Per-session summary rate limit.
