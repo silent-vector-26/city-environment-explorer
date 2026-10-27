@@ -58,6 +58,9 @@ jobs:
       AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
       AZURE_OPENAI_ACCOUNT_NAME: ${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}
       AZURE_OPENAI_RESOURCE_GROUP: ${{ vars.AZURE_OPENAI_RESOURCE_GROUP }}
+      CEE_MIN_REPLICAS: ${{ vars.CEE_MIN_REPLICAS || '1' }}
+      CEE_MONTHLY_BUDGET_USD: ${{ vars.CEE_MONTHLY_BUDGET_USD || '30' }}
+      BUDGET_CONTACT_EMAIL: ${{ vars.BUDGET_CONTACT_EMAIL }}
       AIRNOW_API_KEY: ${{ secrets.AIRNOW_API_KEY }}
       IMAGE_NAME: city-environment-explorer
       IMAGE_TAG: ${{ github.sha }}
@@ -147,6 +150,9 @@ jobs:
                          azureOpenAiAccountName="$AZURE_OPENAI_ACCOUNT_NAME" \
                          azureOpenAiResourceGroup="$AZURE_OPENAI_RESOURCE_GROUP" \
                          airNowApiKey="$AIRNOW_API_KEY" \
+                         minReplicas="$CEE_MIN_REPLICAS" \
+                         monthlyBudgetUsd="$CEE_MONTHLY_BUDGET_USD" \
+                         budgetContactEmail="$BUDGET_CONTACT_EMAIL" \
                          deployApp=true \
             --output none
 
