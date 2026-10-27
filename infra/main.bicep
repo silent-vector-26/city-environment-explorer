@@ -20,10 +20,10 @@ param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-hellowo
 @description('Create the public Container App after the registry and environment exist. Set false for the first deployment before building the app image.')
 param deployApp bool = true
 
-@description('Minimum active replicas. Zero allows HTTP scale-to-zero and may result in a cold start.')
+@description('Minimum active replicas. One keeps the AirNow data cache warm; zero allows scale-to-zero but loses the cache and causes cold starts.')
 @minValue(0)
 @maxValue(10)
-param minReplicas int = 0
+param minReplicas int = 1
 
 @description('Maximum active replicas for the portfolio demo.')
 @minValue(1)
@@ -36,7 +36,19 @@ param azureOpenAiEndpoint string = ''
 @description('Optional Azure OpenAI deployment name. The app uses its managed identity when configured.')
 param azureOpenAiDeployment string = ''
 
+@description('Optional name of the existing Azure OpenAI account. With azureOpenAiResourceGroup, grants the app identity the Cognitive Services OpenAI User role.')
+param azureOpenAiAccountName string = ''
+
+@description('Resource group of the existing Azure OpenAI account, in the same subscription.')
+param azureOpenAiResourceGroup string = ''
+
+@description('Optional EPA AirNow API key. When empty, the app shows labeled sample data.')
+@secure()
+param airNowApiKey string = ''
+
 var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+var hasAirNowKey = !empty(airNowApiKey)
+var grantOpenAiAccess = deployApp && !empty(azureOpenAiAccountName) && !empty(azureOpenAiResourceGroup)
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2025-02-01' = {
   name: 'cee-logs-${uniqueString(resourceGroup().id)}'
@@ -116,6 +128,14 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = if (deployApp) 
           identity: registryPullIdentity.id
         }
       ]
+      secrets: hasAirNowKey
+        ? [
+            {
+              name: 'airnow-api-key'
+              value: airNowApiKey
+            }
+          ]
+        : []
     }
     template: {
       containers: [
@@ -142,6 +162,14 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = if (deployApp) 
                   {
                     name: 'AZURE_OPENAI_DEPLOYMENT'
                     value: azureOpenAiDeployment
+                  }
+                ]
+              : [],
+            hasAirNowKey
+              ? [
+                  {
+                    name: 'AIRNOW_API_KEY'
+                    secretRef: 'airnow-api-key'
                   }
                 ]
               : []
@@ -189,6 +217,16 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = if (deployApp) 
   dependsOn: [
     registryPullRoleAssignment
   ]
+}
+
+module openAiAccess 'openai-role.bicep' = if (grantOpenAiAccess) {
+  name: 'cee-openai-access'
+  scope: resourceGroup(azureOpenAiResourceGroup)
+  params: {
+    accountName: azureOpenAiAccountName
+    principalId: containerApp!.identity.principalId
+    assignmentSeed: containerAppName
+  }
 }
 
 output acrName string = registry.name

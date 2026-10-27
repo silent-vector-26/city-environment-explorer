@@ -141,21 +141,20 @@ Priority uses **Must**, **Should**, and **Could** for the MVP baseline.
 
 ## 5. Data sources and validation plan
 
-No live provider or integration is approved by this specification. The following
-are candidate source categories, not confirmed dependencies:
+The primary provider is the EPA AirNow API (monitoring-site hourly data service),
+validated for Fairfax County coverage: three monitoring sites (Ashburn, Franconia
+and Northern VA Near Road) return hourly PM2.5 for 30 days. The retired AirNow ZIP
+and lat/long endpoints are not used. Readings are provisional and unvalidated and
+shall be labeled as such. The other candidates below remain unconfirmed.
 
 | Candidate | Intended use | Required validation before adoption |
 | --- | --- | --- |
+| EPA AirNow (adopted) | Hourly PM2.5 by monitoring site, aggregated to local-day means | Follow AirNow data use guidelines; cache results; retain site, agency and timestamp metadata |
 | Official Fairfax County GIS portal | County geography, boundaries, and suitable public GIS layers | Confirm layer relevance, service/API availability, licensing and attribution, geographic detail, update cadence, and technical access constraints |
-| Regional environmental feeds | Potential local or regional environmental observations | Identify the specific provider and measures; verify API availability, credentials, Fairfax County coverage, timestamps, units, update frequency, quality, terms, and cost |
-| Federal environmental feeds | Potential air-quality, weather, or other environmental observations | Identify the specific provider and measures; verify API availability, credentials, spatial and temporal coverage, timestamps, units, update frequency, quality, terms, and cost |
-| Clearly labeled sample data | Demonstration fallback when validated live data is unavailable or unsuitable | Document that values are illustrative, avoid implying they are current observations, and retain provenance/metadata needed for UI and test scenarios |
+| Other regional or federal feeds | Potential weather or other environmental observations | Identify the specific provider and measures; verify API availability, credentials, coverage, timestamps, units, update frequency, quality, terms, and cost |
+| Clearly labeled sample data | Fallback when AirNow is unavailable or no key is configured | Document that values are illustrative, avoid implying they are current observations, and retain provenance/metadata needed for UI and test scenarios |
 
-Provider examples such as public air-quality or weather services may be evaluated,
-but no named feed is guaranteed to have an API suitable for this demo. Provider
-selection is a project validation task. The demo shall not claim live data until
-connectivity, access/credential requirements, licensing, and relevant spatial
-and temporal coverage have been verified.
+The demo shall not label sample data as live or real.
 
 ### 5.1 Minimum data fields
 
@@ -190,17 +189,20 @@ the relevant selected data and provenance needed to generate a grounded summary.
 The design shall make source evidence available alongside generated text rather
 than relying on a model’s unaided knowledge for current conditions.
 
-Live data providers and APIs remain undecided. Any external service requiring
-credentials must be assessed for secure configuration and cost before adoption.
-Credentials must not be committed to the repository or exposed in client-side
-code.
+The AirNow API key is a credential stored as a GitHub Environment secret and a
+Container Apps secret. It must not be committed to the repository or exposed in
+client-side code or error messages.
 
-The initial implementation uses generated, clearly labeled sample observations.
-Optional Azure OpenAI summaries use an OpenAI-compatible v1 endpoint and are
-disabled until an endpoint and deployment are configured. When no model is
-configured, the app may show a deterministic sample summary that is explicitly
-labeled as non-AI output. A configured model request failure must be surfaced
-rather than hidden by the sample fallback.
+Observations come from AirNow. Because the service can take over a minute, an
+in-process background job loads the data at container start and refreshes it
+hourly; requests read the last good snapshot. When no key is configured or no
+snapshot can be loaded, the app shows clearly labeled sample observations.
+Azure OpenAI summaries (`gpt-5.2`) use an OpenAI-compatible v1 endpoint with the
+app's managed identity, return Markdown that cites evidence IDs, and are disabled
+until an endpoint and deployment are configured. When no model is configured, the
+app may show a deterministic summary that is explicitly labeled as non-AI output.
+A configured model request failure must be surfaced rather than hidden by the
+fallback.
 
 ### 6.3 Deployment direction
 
@@ -208,8 +210,9 @@ The MVP shall be deployable to Azure Container Apps in East US 2 by default,
 with the region configurable. Infrastructure shall be described in Bicep under
 `infra/`; the deployment shall use an Azure Container Registry, a Container Apps
 managed environment, Log Analytics, and a managed identity for image pulls.
-Public ingress shall use HTTPS. The app shall support scale-to-zero and a
-configurable, bounded maximum replica count.
+Public ingress shall use HTTPS. The app shall keep at least one replica running so
+the in-memory data cache stays warm, with a configurable, bounded maximum
+replica count.
 
 GitHub Actions shall test the application and build the container before
 deployment. It shall deploy the app using GitHub OIDC rather than long-lived
@@ -317,8 +320,7 @@ The MVP scope is considered demonstrable when:
 ### 9.2 Decisions deferred
 
 - Additional measures and environmental domains to include after source review.
-- Exact live data providers, APIs, credentials, retention/caching approach, and
-  refresh frequency.
+- Persisting AirNow history across restarts, and evaluation/tracing of summaries.
 - Azure model deployment selection and budget ceiling.
 - Production data feeds, user analytics, or location-based features.
 

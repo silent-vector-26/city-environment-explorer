@@ -73,12 +73,12 @@ def summarize_evidence(observations: pd.DataFrame) -> list[dict[str, Any]]:
                 "start_date": ordered["date"].iloc[0],
                 "end_date": ordered["date"].iloc[-1],
                 "observation_count": int(len(ordered)),
-                "mean_value": float(values.mean()),
-                "min_value": float(values.min()),
-                "max_value": float(values.max()),
-                "earlier_mean": earlier_mean,
-                "recent_mean": recent_mean,
-                "change": recent_mean - earlier_mean,
+                "mean_value": round(float(values.mean()), 1),
+                "min_value": round(float(values.min()), 1),
+                "max_value": round(float(values.max()), 1),
+                "initial_window_mean": round(earlier_mean, 1),
+                "recent_window_mean": round(recent_mean, 1),
+                "change": round(recent_mean - earlier_mean, 1),
                 "comparison_window_days": window_size,
                 "source": str(ordered["source"].iloc[0]),
                 "record_type": str(ordered["record_type"].iloc[0]),
@@ -119,5 +119,11 @@ def build_sample_summary(evidence: list[dict[str, Any]]) -> str:
             f"{abs(item['change']):.1f} {unit} versus the initial window."
         )
 
-    lines.append("These values are synthetic illustrations, not environmental measurements.")
+    if all(item["record_type"] == "observed" for item in evidence):
+        lines.append(
+            "Values are provisional, unvalidated AirNow monitoring-site readings "
+            "and are not a health or safety assessment."
+        )
+    else:
+        lines.append("These values are synthetic illustrations, not environmental measurements.")
     return "\n\n".join(lines)

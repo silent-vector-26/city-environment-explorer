@@ -56,6 +56,9 @@ jobs:
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
       AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+      AZURE_OPENAI_ACCOUNT_NAME: ${{ vars.AZURE_OPENAI_ACCOUNT_NAME }}
+      AZURE_OPENAI_RESOURCE_GROUP: ${{ vars.AZURE_OPENAI_RESOURCE_GROUP }}
+      AIRNOW_API_KEY: ${{ secrets.AIRNOW_API_KEY }}
       IMAGE_NAME: city-environment-explorer
       IMAGE_TAG: ${{ github.sha }}
     steps:
@@ -75,6 +78,11 @@ jobs:
           if [[ -n "$AZURE_OPENAI_ENDPOINT" && -z "$AZURE_OPENAI_DEPLOYMENT" ]] \
             || [[ -z "$AZURE_OPENAI_ENDPOINT" && -n "$AZURE_OPENAI_DEPLOYMENT" ]]; then
             echo "::error::Set both AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT, or leave both unset."
+            exit 1
+          fi
+          if [[ -n "$AZURE_OPENAI_ACCOUNT_NAME" && -z "$AZURE_OPENAI_RESOURCE_GROUP" ]] \
+            || [[ -z "$AZURE_OPENAI_ACCOUNT_NAME" && -n "$AZURE_OPENAI_RESOURCE_GROUP" ]]; then
+            echo "::error::Set both AZURE_OPENAI_ACCOUNT_NAME and AZURE_OPENAI_RESOURCE_GROUP, or leave both unset."
             exit 1
           fi
 
@@ -136,6 +144,9 @@ jobs:
                          containerAppsEnvironmentName="$CONTAINER_APPS_ENVIRONMENT" \
                          azureOpenAiEndpoint="$AZURE_OPENAI_ENDPOINT" \
                          azureOpenAiDeployment="$AZURE_OPENAI_DEPLOYMENT" \
+                         azureOpenAiAccountName="$AZURE_OPENAI_ACCOUNT_NAME" \
+                         azureOpenAiResourceGroup="$AZURE_OPENAI_RESOURCE_GROUP" \
+                         airNowApiKey="$AIRNOW_API_KEY" \
                          deployApp=true \
             --output none
 

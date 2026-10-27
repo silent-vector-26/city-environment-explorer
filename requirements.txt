@@ -6,3 +6,4 @@ plotly>=5,<7
 openai>=1.55,<3
 azure-identity>=1.19,<2
 python-dotenv>=1,<2
+requests>=2.31,<3
