@@ -77,6 +77,25 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2025-02-01' = {
   }
 }
 
+resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: 'cee-appi-${uniqueString(resourceGroup().id)}'
+  location: location
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    WorkspaceResourceId: logAnalytics.id
+    DisableLocalAuth: false
+  }
+}
+
+module telemetryWorkbook 'workbook.bicep' = {
+  name: 'telemetry-workbook'
+  params: {
+    location: location
+    appInsightsId: appInsights.id
+  }
+}
+
 resource budget 'Microsoft.Consumption/budgets@2023-11-01' = if (monthlyBudgetUsd > 0 && !empty(budgetContactEmail)) {
   name: 'cee-monthly-budget'
   properties: {
@@ -209,6 +228,10 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = if (deployApp) 
               {
                 name: 'APP_ENV'
                 value: 'production'
+              }
+              {
+                name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+                value: appInsights.properties.ConnectionString
               }
             ],
             !empty(azureOpenAiEndpoint) && !empty(azureOpenAiDeployment)

@@ -6,6 +6,7 @@ from typing import Any
 import pandas as pd
 import requests
 
+from cee.telemetry import tracer
 AIRNOW_DATA_URL = "https://www.airnowapi.org/aq/data/"
 AIRNOW_SOURCE = "EPA AirNow monitoring sites (provisional, unvalidated)"
 LIVE_MEASURE = "PM2.5 daily mean of hourly readings"
@@ -119,7 +120,10 @@ def hourly_to_daily(hourly: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_live_observations(api_key: str, days: int = 30) -> pd.DataFrame:
-    daily = hourly_to_daily(fetch_hourly_pm25(api_key, days=days))
-    if daily.empty:
-        raise AirNowError("AirNow returned no usable PM2.5 readings.")
-    return daily
+    with tracer.start_as_current_span("cee.load_airnow") as span:
+        span.set_attribute("cee.days", days)
+        daily = hourly_to_daily(fetch_hourly_pm25(api_key, days=days))
+        span.set_attribute("cee.daily_rows", len(daily))
+        if daily.empty:
+            raise AirNowError("AirNow returned no usable PM2.5 readings.")
+        return daily

@@ -4,6 +4,10 @@ import os
 import re
 from typing import Any
 
+from opentelemetry.trace import Span
+
+from cee.telemetry import tracer
+
 MIN_TREND_OBSERVATIONS = 7
 
 
@@ -19,6 +23,22 @@ def azure_ai_is_configured() -> bool:
 
 
 def generate_grounded_summary(evidence: list[dict[str, Any]]) -> str:
+    with tracer.start_as_current_span("cee.generate_summary") as span:
+        span.set_attribute("cee.evidence_count", len(evidence))
+        span.set_attribute("gen_ai.system", "azure_openai")
+        span.set_attribute(
+            "gen_ai.request.model", os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
+        )
+        try:
+            summary = _generate_grounded_summary(evidence, span)
+        except Exception as error:
+            span.set_attribute("cee.outcome", type(error).__name__)
+            raise
+        span.set_attribute("cee.outcome", "ok")
+        return summary
+
+
+def _generate_grounded_summary(evidence: list[dict[str, Any]], span: Span) -> str:
     if not azure_ai_is_configured():
         raise RuntimeError(
             "Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT to enable Azure AI."
@@ -103,6 +123,14 @@ def generate_grounded_summary(evidence: list[dict[str, Any]]) -> str:
             credential.close()
 
     content = response.choices[0].message.content
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        span.set_attribute("gen_ai.usage.input_tokens", usage.prompt_tokens)
+        span.set_attribute("gen_ai.usage.output_tokens", usage.completion_tokens)
+    span.set_attribute(
+        "gen_ai.response.finish_reason",
+        str(getattr(response.choices[0], "finish_reason", "")),
+    )
     if not content or not content.strip():
         raise ValueError("Azure AI returned an empty summary.")
 
