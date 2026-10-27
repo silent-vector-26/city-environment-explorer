@@ -450,8 +450,12 @@ Azure pricing calculator and Cost Management.
 | AirNow, GitHub Actions, Entra | Free | $0 |
 | **Total with `minReplicas=1`** | | **about $35 to 45** |
 
-The always-on replica dominates the cost, because the "active" vCPU and memory
-rate applies while it runs.
+The replica dominates the cost. The figures above assume it is billed at the
+"active" rate all month. Container Apps bills a replica that is mostly idle at a
+lower rate, so a lightly used demo with `minReplicas=1` is more likely about
+$15 to 20 per month in total. These are list-price estimates; confirm them in
+Cost Management after a few days. The current production deployment sets
+`minReplicas=0`.
 
 ### 10.2 Controls implemented
 
