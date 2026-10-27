@@ -74,6 +74,29 @@ charges. In an Azure-hosted production environment, use managed identity and set
 `APP_ENV=production`; do not use a developer credential chain there. See the
 [Microsoft Azure OpenAI Python endpoint guidance](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/switching-endpoints).
 
+## Evaluating summary groundedness
+
+[`evals/`](evals) holds a fixed set of six evidence scenarios (rising, falling and
+flat trends, a single observation, synthetic data, and a prompt-injection
+location name). [`cee/evaluation.py`](cee/evaluation.py) checks each generated
+summary deterministically:
+
+- every claim cites a known evidence ID;
+- every number comes from the evidence (no invented figures);
+- no health advice, causal claims, real-time wording, or headings;
+- required wording is present (data is provisional or synthetic; insufficient
+  evidence is stated).
+
+```powershell
+python -m pytest                       # offline checks of the evaluator itself
+python -m evals.run_eval --repeats 3   # live run against your Azure deployment
+```
+
+The live run calls the model and may incur a small charge. Results are written to
+`evals/results.json` (ignored by git). The first run found that the model did not
+flag a single-observation record as insufficient; the prompt was tightened and the
+set now passes 18 of 18 runs.
+
 ## Deploy to Azure Container Apps
 
 The deployment uses Bicep and a GitHub Actions workflow with GitHub OIDC. It
@@ -146,7 +169,7 @@ billed at a lower rate); confirm in Cost Management. The current deployment sets
 
 - Persist AirNow history (for example in Blob Storage) so restarts do not
   require a full reload.
-- Add tracing and a small groundedness evaluation set for the summaries.
+- Add tracing for the Azure OpenAI calls.
 
 ## Documentation
 
