@@ -346,7 +346,12 @@ st.dataframe(
     width="stretch",
     hide_index=True,
 )
-st.caption(
-    "Evidence records summarize generated sample values. No live Fairfax County "
-    "environmental provider has been integrated or validated."
-)
+if is_live:
+    st.caption(
+        "Evidence records summarize provisional EPA AirNow readings and may be revised."
+    )
+else:
+    st.caption(
+        "Evidence records summarize generated sample values. No live data was "
+        "available for this view."
+    )
