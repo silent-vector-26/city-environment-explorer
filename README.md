@@ -15,6 +15,10 @@ model. It is hosted on Azure Container Apps.
 
 ## Features
 
+![Map of Fairfax County PM2.5 monitoring sites](docs/images/explorer.png)
+
+![Grounded Azure OpenAI summary with evidence citations](docs/images/summary.png)
+
 - Explore real PM2.5 monitoring sites in and around Fairfax County on a map.
 - Filter hourly readings (averaged to local-day means) by site and time window.
 - Compare site averages and inspect trends over time.
@@ -199,6 +203,23 @@ billed at a lower rate); confirm in Cost Management. The current deployment sets
 - To save money between demos, set the Environment variable `CEE_MIN_REPLICAS`
   to `0` and re-run the workflow, or delete the resource group and redeploy
   later.
+
+## Skills demonstrated
+
+This project is a practical showcase of Azure AI engineering skills (built after
+passing the AI-103 exam). Each row points to where it lives in the repo.
+
+| Skill area | How it is shown | Where |
+| --- | --- | --- |
+| Generative AI on Azure OpenAI | `gpt-5.2` deployment called with managed identity; no API keys | [cee/ai.py](cee/ai.py) |
+| Grounded generation | Summaries use only supplied evidence, cite IDs, and are validated; insufficient data is stated, not guessed | [cee/ai.py](cee/ai.py) |
+| Evaluation | Deterministic groundedness checks and a 6-case live evaluation set (18 of 18 runs pass) | [cee/evaluation.py](cee/evaluation.py), [evals/](evals) |
+| Observability | OpenTelemetry spans to Application Insights, with token counts and outcomes but no prompt content; Azure Workbook | [cee/telemetry.py](cee/telemetry.py), [infra/workbook.bicep](infra/workbook.bicep) |
+| Data engineering | Real EPA AirNow data, a Cosmos DB history store, and an incremental fetch with a 48 h overlap | [cee/history.py](cee/history.py), [cee/store.py](cee/store.py) |
+| Responsible AI | Provisional-data disclosure, source attribution, and labeled fallbacks | [docs/](docs) |
+| Secure operations | Managed identity everywhere, Cosmos local auth disabled, least-privilege deploy identity | [infra/main.bicep](infra/main.bicep) |
+| Infrastructure as code and CI/CD | Bicep, GitHub Actions with an approval-gated environment and OIDC | [.github/workflows/](.github/workflows) |
+| Cost governance | Serverless Cosmos, a single replica, a log cap, and a budget with alerts | [Cost controls](#cost-controls) |
 
 ## Next steps
 
