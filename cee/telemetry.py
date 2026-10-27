@@ -30,7 +30,12 @@ def configure_telemetry() -> bool:
     try:
         from azure.monitor.opentelemetry import configure_azure_monitor
 
-        configure_azure_monitor(connection_string=connection_string)
+        # The Cosmos backfill issues thousands of item calls; tracing each one
+        # overflows the export queue and drops the parent cee.* spans.
+        configure_azure_monitor(
+            connection_string=connection_string,
+            instrumentation_options={"azure_sdk": {"enabled": False}},
+        )
     except Exception:  # telemetry must never stop the app from starting
         logger.exception("Could not enable Azure Monitor telemetry.")
         return False
