@@ -4,6 +4,8 @@ import os
 import re
 from typing import Any
 
+MIN_TREND_OBSERVATIONS = 7
+
 
 def azure_ai_is_configured() -> bool:
     has_endpoint = bool(os.getenv("AZURE_OPENAI_ENDPOINT", "").strip())
@@ -82,7 +84,11 @@ def generate_grounded_summary(evidence: list[dict[str, Any]]) -> str:
                         f"{data_statement} Format as brief Markdown using bold labels "
                         "and bullet lists only; do not use headings. Cite every "
                         "factual comparison with its exact evidence ID in brackets, "
-                        "such as [S1]. If evidence is insufficient, say so."
+                        "such as [S1]. If evidence is insufficient, say so. A record "
+                        f"with fewer than {MIN_TREND_OBSERVATIONS} observations is "
+                        "insufficient for a trend: "
+                        "explicitly write that the evidence is insufficient to "
+                        "describe a trend for that location."
                     ),
                 },
                 {
