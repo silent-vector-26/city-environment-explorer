@@ -22,7 +22,7 @@ them. Requirement identifiers (CEE-FR-xxx, CEE-NFR-xxx) refer to the SRS.
 1. **Grounded, honest AI.** Summaries cite only evidence supplied with the request.
 2. **Real data, resilient delivery.** Use slow public data without blocking users.
 3. **Zero stored secrets for Azure access.** OIDC for CI/CD, managed identity at runtime.
-4. **Low cost, simple operations.** One container, in-process cache, no database.
+4. **Low cost, simple operations.** One container, in-process cache, and a serverless Cosmos DB history store.
 5. **Replaceable parts.** Data source, AI model and hosting are isolated behind small modules.
 
 ## 2. System context
@@ -208,16 +208,19 @@ sequenceDiagram
     participant C as LiveDataCache
     participant SRC as sources.py
     participant AN as AirNow API
+    participant DB as Cosmos DB
     participant ST as Streamlit
 
     CA->>S: start container
     S->>C: start(api_key) in daemon thread
     S->>ST: run Streamlit in-process on PORT
     par background load
-        C->>SRC: load_live_observations(key, 30)
+        C->>DB: seed: read stored hourly rows
+        DB-->>C: stored daily DataFrame, set ready
+        C->>SRC: fetch from newest stored hour minus 48 h
         SRC->>AN: GET /aq/data (up to 90 s, one retry)
         AN-->>SRC: hourly PM2.5 records
-        SRC-->>C: daily DataFrame
+        SRC-->>C: new rows, upserted to DB and merged
         C->>C: store snapshot, set ready
     and serving
         ST-->>CA: health check responds immediately
@@ -340,6 +343,7 @@ flowchart TB
         pull[User-assigned identity<br/>AcrPull]
         app[Container App<br/>min 1, max 1 replica<br/>system-assigned identity]
         secret[(Secret: airnow-api-key)]
+        cosmos[(Cosmos DB serverless<br/>hourly_pm25, TTL 90 days<br/>local auth disabled)]
     end
     subgraph rgai[Resource group rg-akhorozov-ai-103]
         oai[Azure AI Services account<br/>gpt-5.2 deployment]
@@ -351,6 +355,7 @@ flowchart TB
     pull -.->|AcrPull role| acr
     app -.->|uses| pull
     app --> secret
+    app ==>|Cosmos DB Built-in Data Contributor| cosmos
     app ==>|Cognitive Services OpenAI User| oai
     internet((Internet)) -->|HTTPS ingress| app
 ```
@@ -535,7 +540,7 @@ flowchart TD
 | # | Decision | Alternatives | Rationale |
 | --- | --- | --- | --- |
 | D1 | Streamlit single process | React + API | Fastest path; Python end to end |
-| D2 | In-process cache | Redis, Blob Storage | No extra cost or infrastructure; persistence is a backlog item (DP-54) |
+| D2 | Two-level cache: in-process L1 plus Cosmos DB serverless L2 (90-day TTL, partition `/pk` = station) | Redis, Blob Storage | Redis adds a standing cost and a single replica already gives L1; Cosmos survives restarts, costs pennies, and uses managed identity (DP-54). Incremental fetch re-requests a 48 h overlap because AirNow revises data |
 | D3 | AirNow `/aq/data/` | `ziplatlong` current readings | Only service giving history |
 | D4 | Managed identity for OpenAI | API key | No secret to store or rotate |
 | D5 | GitHub OIDC | Service principal secret | No long-lived credential |
@@ -547,7 +552,6 @@ flowchart TD
 
 - Grafana dashboard over Application Insights (DP-57, optional).
 - Run the groundedness evaluation (DP-56, implemented) in CI on a schedule.
-- Persisting AirNow history (DP-54).
 - Budget alerts (DP-52): implemented in the Bicep; close after deployment.
 - Per-session summary rate limit.
 - Verifying the production deployment of the real-data release (DP-53).

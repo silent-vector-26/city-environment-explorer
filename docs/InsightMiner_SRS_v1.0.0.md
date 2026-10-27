@@ -138,6 +138,13 @@ Priority uses **Must**, **Should**, and **Could** for the MVP baseline.
 - **CEE-FR-017 (Should):** Data acquisition and normalization should be isolated
   from presentation so that validated sources can be added or replaced without
   changing the user-facing meaning of measures.
+- **CEE-FR-018 (Should):** The application should persist hourly observations
+  for up to 90 days so a restarted instance can show stored data immediately,
+  without waiting for a full source download.
+- **CEE-FR-019 (Should):** After the first load, the application should request
+  only data newer than what is stored, re-requesting a 48-hour overlap because
+  the source revises provisional values. If the source is unavailable, stored
+  data shall be served and identified as such.
 
 ## 5. Data sources and validation plan
 
@@ -278,6 +285,9 @@ deployment through GitHub.
 - **CEE-NFR-013 (Should):** Data-source integrations should be modular and
   documented so a provider can be replaced if terms, availability, or cost
   change.
+- **CEE-NFR-014 (Should):** Persistent storage shall use a consumption-priced
+  service with keyless (managed identity) access and automatic expiry of
+  old records.
 
 ## 8. Acceptance criteria
 

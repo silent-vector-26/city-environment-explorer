@@ -59,9 +59,15 @@ param azureOpenAiResourceGroup string = ''
 @secure()
 param airNowApiKey string = ''
 
+@description('Days that stored hourly AirNow readings are kept before Cosmos DB expires them.')
+@minValue(1)
+param hourlyRetentionDays int = 90
+
 var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var hasAirNowKey = !empty(airNowApiKey)
 var grantOpenAiAccess = deployApp && !empty(azureOpenAiAccountName) && !empty(azureOpenAiResourceGroup)
+
+var cosmosDataContributorRoleId = '00000000-0000-0000-0000-000000000002'
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2025-02-01' = {
   name: 'cee-logs-${uniqueString(resourceGroup().id)}'
@@ -85,6 +91,56 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
     Application_Type: 'web'
     WorkspaceResourceId: logAnalytics.id
     DisableLocalAuth: false
+  }
+}
+
+resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
+  name: 'cee-cosmos-${uniqueString(resourceGroup().id)}'
+  location: location
+  kind: 'GlobalDocumentDB'
+  properties: {
+    databaseAccountOfferType: 'Standard'
+    locations: [
+      {
+        locationName: location
+        failoverPriority: 0
+        isZoneRedundant: false
+      }
+    ]
+    capabilities: [
+      {
+        name: 'EnableServerless'
+      }
+    ]
+    disableLocalAuth: true
+    minimalTlsVersion: 'Tls12'
+  }
+}
+
+resource cosmosDatabase 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-05-15' = {
+  parent: cosmosAccount
+  name: 'cee'
+  properties: {
+    resource: {
+      id: 'cee'
+    }
+  }
+}
+
+resource cosmosContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
+  parent: cosmosDatabase
+  name: 'hourly_pm25'
+  properties: {
+    resource: {
+      id: 'hourly_pm25'
+      partitionKey: {
+        paths: [
+          '/pk'
+        ]
+        kind: 'Hash'
+      }
+      defaultTtl: hourlyRetentionDays * 86400
+    }
   }
 }
 
@@ -233,6 +289,10 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = if (deployApp) 
                 name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
                 value: appInsights.properties.ConnectionString
               }
+              {
+                name: 'COSMOS_ENDPOINT'
+                value: cosmosAccount.properties.documentEndpoint
+              }
             ],
             !empty(azureOpenAiEndpoint) && !empty(azureOpenAiDeployment)
               ? [
@@ -298,6 +358,16 @@ resource containerApp 'Microsoft.App/containerApps@2025-01-01' = if (deployApp) 
   dependsOn: [
     registryPullRoleAssignment
   ]
+}
+
+resource cosmosDataAccess 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = if (deployApp) {
+  parent: cosmosAccount
+  name: guid(cosmosAccount.id, containerAppName, cosmosDataContributorRoleId)
+  properties: {
+    roleDefinitionId: '${cosmosAccount.id}/sqlRoleDefinitions/${cosmosDataContributorRoleId}'
+    principalId: containerApp!.identity.principalId
+    scope: cosmosAccount.id
+  }
 }
 
 module openAiAccess 'openai-role.bicep' = if (grantOpenAiAccess) {
