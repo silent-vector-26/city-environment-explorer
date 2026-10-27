@@ -337,7 +337,7 @@ flowchart TB
         acr[Azure Container Registry<br/>admin disabled]
         env[Container Apps environment]
         pull[User-assigned identity<br/>AcrPull]
-        app[Container App<br/>min 1, max 2 replicas<br/>system-assigned identity]
+        app[Container App<br/>min 1, max 1 replica<br/>system-assigned identity]
         secret[(Secret: airnow-api-key)]
     end
     subgraph rgai[Resource group rg-akhorozov-ai-103]
@@ -432,7 +432,8 @@ flowchart TB
 - **Warm cache:** `minReplicas=1` keeps the in-memory snapshot alive; scale-to-zero would force a 1 to 2 minute cold start.
 - **Failure handling:** last good snapshot is retained; failures retry in 5 minutes; the UI falls back to labeled sample data.
 - **Cost drivers:** one always-on 0.5 vCPU replica, ACR Basic, Log Analytics ingestion, gpt-5.2 tokens per summary (capped at 600 completion tokens). Budget alerts are tracked as DP-52.
-- **Limits of the design:** the cache is per replica; with `maxReplicas=2` a second replica warms independently and AirNow is called twice. Acceptable for a demo.
+- **Limits of the design:** the cache is per replica, so `maxReplicas` is 1; scaling out would warm a second cache and call AirNow twice. Acceptable for a demo.
+- **Cost controls:** `maxReplicas=1`, a 1 GB per day Log Analytics cap, and a monthly budget (default $30) with email alerts at 50% and 100% actual and 100% forecast. `CEE_MIN_REPLICAS=0` allows scale-to-zero between demos.
 
 ## 10. Testing strategy
 

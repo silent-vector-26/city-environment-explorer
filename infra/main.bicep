@@ -28,7 +28,20 @@ param minReplicas int = 1
 @description('Maximum active replicas for the portfolio demo.')
 @minValue(1)
 @maxValue(10)
-param maxReplicas int = 2
+param maxReplicas int = 1
+
+@description('Daily Log Analytics ingestion cap in GB, to bound logging cost.')
+param logDailyQuotaGb int = 1
+
+@description('Monthly budget for the resource group in USD. Set to 0 to skip creating the budget.')
+@minValue(0)
+param monthlyBudgetUsd int = 30
+
+@description('Email address that receives budget alerts. The budget is skipped when empty.')
+param budgetContactEmail string = ''
+
+@description('Budget start date. Must be the first day of a month.')
+param budgetStartDate string = '2026-10-01T00:00:00Z'
 
 @description('Optional Azure OpenAI resource endpoint. When empty, model summaries remain unconfigured.')
 param azureOpenAiEndpoint string = ''
@@ -57,6 +70,51 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2025-02-01' = {
     retentionInDays: 30
     sku: {
       name: 'PerGB2018'
+    }
+    workspaceCapping: {
+      dailyQuotaGb: logDailyQuotaGb
+    }
+  }
+}
+
+resource budget 'Microsoft.Consumption/budgets@2023-11-01' = if (monthlyBudgetUsd > 0 && !empty(budgetContactEmail)) {
+  name: 'cee-monthly-budget'
+  properties: {
+    category: 'Cost'
+    amount: monthlyBudgetUsd
+    timeGrain: 'Monthly'
+    timePeriod: {
+      startDate: budgetStartDate
+      endDate: '2036-10-01T00:00:00Z'
+    }
+    notifications: {
+      actual50: {
+        enabled: true
+        operator: 'GreaterThan'
+        threshold: 50
+        thresholdType: 'Actual'
+        contactEmails: [
+          budgetContactEmail
+        ]
+      }
+      actual100: {
+        enabled: true
+        operator: 'GreaterThan'
+        threshold: 100
+        thresholdType: 'Actual'
+        contactEmails: [
+          budgetContactEmail
+        ]
+      }
+      forecast100: {
+        enabled: true
+        operator: 'GreaterThan'
+        threshold: 100
+        thresholdType: 'Forecasted'
+        contactEmails: [
+          budgetContactEmail
+        ]
+      }
     }
   }
 }

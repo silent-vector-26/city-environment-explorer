@@ -123,9 +123,19 @@ container image, deploys the app, and prints its HTTPS endpoint.
 The Bicep template is [`infra/main.bicep`](infra/main.bicep), with a small module
 for the Azure OpenAI role assignment. It keeps one replica running (`minReplicas`
 is 1) so the in-memory AirNow cache stays warm; this means the app has a
-continuous compute cost. Setting it to 0 allows scale-to-zero but causes slow
-cold starts. Container Apps, registry storage, and log ingestion can incur
-charges. Review current pricing and configure budget alerts.
+continuous compute cost (roughly $35 to 45 per month in total; estimate only).
+Setting it to 0 allows scale-to-zero but causes slow cold starts.
+
+### Cost controls
+
+- `maxReplicas` is 1, and Log Analytics ingestion is capped at 1 GB per day.
+- A monthly budget (default $30) emails alerts at 50% and 100% of actual spend
+  and 100% of forecast. Set the Environment variables `BUDGET_CONTACT_EMAIL`
+  (required for the budget to be created) and, optionally,
+  `CEE_MONTHLY_BUDGET_USD`.
+- To save money between demos, set the Environment variable `CEE_MIN_REPLICAS`
+  to `0` and re-run the workflow, or delete the resource group and redeploy
+  later.
 
 ## Next steps
 
