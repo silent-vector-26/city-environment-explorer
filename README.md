@@ -111,6 +111,27 @@ and a shared Azure Workbook, "City Environment Explorer telemetry" (calls per da
 p50/p95 latency, tokens, outcomes, AirNow load time). Telemetry volume is small and
 is covered by the 1 GB per day log cap.
 
+## Persisted history (Cosmos DB)
+
+Hourly PM2.5 readings are stored in a serverless Cosmos DB account (database
+`cee`, container `hourly_pm25`, partition `/pk` = station, 90-day TTL). On start
+the app shows stored data immediately, then fetches only hours newer than the
+newest stored one, re-requesting a 48-hour overlap because AirNow revises
+provisional values. If AirNow is unavailable, stored data is served. Access is
+keyless: the Container App's managed identity has the built-in Data Contributor
+role and local key auth is disabled. Redis was deliberately not used: a single
+replica already has the in-process cache, and Redis has a standing cost.
+
+The store is used only when `COSMOS_ENDPOINT` is set. To use it locally, grant
+your identity access and sign in with `az login`:
+
+```powershell
+az cosmosdb sql role assignment create -g <rg> -a <account> `
+  --role-definition-id 00000000-0000-0000-0000-000000000002 `
+  --principal-id <your-object-id> --scope /
+$env:COSMOS_ENDPOINT = "https://<account>.documents.azure.com:443/"
+```
+
 ## Deploy to Azure Container Apps
 
 The deployment uses Bicep and a GitHub Actions workflow with GitHub OIDC. It
@@ -181,8 +202,6 @@ billed at a lower rate); confirm in Cost Management. The current deployment sets
 
 ## Next steps
 
-- Persist AirNow history (for example in Blob Storage) so restarts do not
-  require a full reload.
 - Add a Grafana dashboard over the same telemetry (DP-57, optional).
 
 ## Documentation

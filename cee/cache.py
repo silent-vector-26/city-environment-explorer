@@ -7,7 +7,9 @@ from typing import Callable
 
 import pandas as pd
 
+from cee.history import load_stored_daily, load_with_history
 from cee.sources import AirNowError, load_live_observations
+from cee.store import HourlyStore, get_store
 
 REFRESH_SECONDS = 3600
 RETRY_SECONDS = 300
@@ -18,6 +20,7 @@ class LiveDataCache:
 
     AirNow's hourly-data service can take over a minute, so requests never call it
     directly. They read the last good snapshot, which is kept if a refresh fails.
+    An optional seed loader publishes durable data first so a cold start is fast.
     """
 
     def __init__(
@@ -25,8 +28,10 @@ class LiveDataCache:
         loader: Callable[[str], pd.DataFrame] = load_live_observations,
         refresh_seconds: float = REFRESH_SECONDS,
         retry_seconds: float = RETRY_SECONDS,
+        seed_loader: Callable[[], pd.DataFrame | None] | None = None,
     ) -> None:
         self._loader = loader
+        self._seed_loader = seed_loader
         self._refresh_seconds = refresh_seconds
         self._retry_seconds = retry_seconds
         self._lock = threading.Lock()
@@ -59,7 +64,21 @@ class LiveDataCache:
             target=self._run, args=(api_key,), name="airnow-refresh", daemon=True
         ).start()
 
+    def _seed(self) -> None:
+        if self._seed_loader is None:
+            return
+        try:
+            data = self._seed_loader()
+        except Exception:  # a broken store must not stop the AirNow refresh
+            return
+        if data is not None and not data.empty:
+            with self._lock:
+                if self._data is None:
+                    self._data = data
+            self._ready.set()
+
     def _run(self, api_key: str) -> None:
+        self._seed()
         while True:
             succeeded = self.refresh(api_key)
             self._ready.set()
@@ -73,4 +92,14 @@ class LiveDataCache:
             return self._data, self._error, self._updated_at
 
 
-live_cache = LiveDataCache()
+def build_live_cache(store: HourlyStore | None = None) -> LiveDataCache:
+    store = store if store is not None else get_store()
+    if store is None:
+        return LiveDataCache()
+    return LiveDataCache(
+        loader=lambda api_key: load_with_history(api_key, store),
+        seed_loader=lambda: load_stored_daily(store),
+    )
+
+
+live_cache = build_live_cache()

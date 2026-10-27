@@ -27,12 +27,15 @@ def fetch_hourly_pm25(
     bbox: tuple[float, float, float, float] = FAIRFAX_BBOX,
     now: datetime | None = None,
     timeout: float = 90.0,
+    start: datetime | None = None,
 ) -> pd.DataFrame:
     if not api_key.strip():
         raise AirNowError("AIRNOW_API_KEY is not set.")
 
     end = (now or datetime.now(timezone.utc)).replace(minute=0, second=0, microsecond=0)
-    start = end - timedelta(days=days)
+    start = (start or end - timedelta(days=days)).replace(
+        minute=0, second=0, microsecond=0
+    )
     params = {
         "startDate": start.strftime("%Y-%m-%dT%H"),
         "endDate": end.strftime("%Y-%m-%dT%H"),
