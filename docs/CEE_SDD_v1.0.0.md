@@ -426,16 +426,72 @@ flowchart TB
 | Over-privileged deploy identity | Custom role limited to deployment read/write on the OpenAI resource group | least privilege |
 | PII | No accounts, no user location, prompts not logged | NFR-004, 005, 007 |
 
-## 9. Reliability, performance and cost
+## 9. Reliability and performance
 
 - **Slow upstream:** AirNow takes 12 to 80 seconds; the cache decouples requests from it.
 - **Warm cache:** `minReplicas=1` keeps the in-memory snapshot alive; scale-to-zero would force a 1 to 2 minute cold start.
 - **Failure handling:** last good snapshot is retained; failures retry in 5 minutes; the UI falls back to labeled sample data.
-- **Cost drivers:** one always-on 0.5 vCPU replica, ACR Basic, Log Analytics ingestion, gpt-5.2 tokens per summary (capped at 600 completion tokens). Budget alerts are tracked as DP-52.
 - **Limits of the design:** the cache is per replica, so `maxReplicas` is 1; scaling out would warm a second cache and call AirNow twice. Acceptable for a demo.
-- **Cost controls:** `maxReplicas=1`, a 1 GB per day Log Analytics cap, and a monthly budget (default $30) with email alerts at 50% and 100% actual and 100% forecast. `CEE_MIN_REPLICAS=0` allows scale-to-zero between demos.
 
-## 10. Testing strategy
+## 10. Cost optimization
+
+Cost figures are estimates from approximate East US 2 list prices and the
+settings in `infra/main.bicep`; they are not billing data. Verify them with the
+Azure pricing calculator and Cost Management.
+
+### 10.1 Estimated monthly cost (about 730 hours)
+
+| Item | Basis | Estimate per month |
+| --- | --- | --- |
+| Container App, always on | 0.5 vCPU and 1 GiB, one replica | about $30 to 40 |
+| Azure Container Registry | Basic SKU | about $5 |
+| Log Analytics | PerGB2018, low volume; first 5 GB per month free | $0 to 2 |
+| Azure OpenAI `gpt-5.2` | About 1.5k tokens in and 600 out per summary | under $1 at demo traffic |
+| AirNow, GitHub Actions, Entra | Free | $0 |
+| **Total with `minReplicas=1`** | | **about $35 to 45** |
+
+The always-on replica dominates the cost, because the "active" vCPU and memory
+rate applies while it runs.
+
+### 10.2 Controls implemented
+
+| Control | Implementation | Effect |
+| --- | --- | --- |
+| Single replica ceiling | `maxReplicas=1` | A traffic spike cannot double compute or AirNow calls |
+| Configurable minimum | Environment variable `CEE_MIN_REPLICAS` passed to `minReplicas` | Set to 0 to scale to zero between demos |
+| Log cap | Log Analytics `workspaceCapping.dailyQuotaGb=1` | Bounds logging cost |
+| Budget alerts | `Microsoft.Consumption/budgets`, default $30 per month; emails at 50% and 100% of actual and 100% of forecast | Early warning; created only when `BUDGET_CONTACT_EMAIL` is set |
+| Token cap | `max_completion_tokens=600` per summary | Bounds model cost per request |
+| Managed identity | No key rotation or secret store needed | No Key Vault cost |
+
+A budget notifies only; it does not stop spending.
+
+### 10.3 Options and trade-offs
+
+```mermaid
+flowchart TD
+    start{Need the app<br/>available now?} -->|Yes, sharing the link| warm[minReplicas=1<br/>about $35 to 45 per month<br/>instant, real data]
+    start -->|No| zero[minReplicas=0<br/>about $5 to 15 per month<br/>cold start up to about 80 s]
+    start -->|Not for weeks| del[Delete resource group<br/>about $0<br/>redeploy in about 10 min after approval]
+    zero --> persist[Persist AirNow history DP-54<br/>shortens cold start]
+```
+
+| Option | Saving | Cost of the option |
+| --- | --- | --- |
+| Scale to zero (`CEE_MIN_REPLICAS=0`) | Most of the compute cost | Cold start; the in-memory cache is lost on every scale-down |
+| Scheduled minimum replicas | Roughly half or more | Extra automation; not implemented |
+| Smaller container (0.25 vCPU, 0.5 GiB) | Roughly half of compute | Streamlit and pandas may run short of memory; not tested |
+| GitHub Container Registry instead of ACR | About $5 | Pipeline changes; low value |
+| Delete the resource group between pushes | Nearly all | Redeploy time and approval |
+| Per-session summary rate limit | Protects model spend | Not implemented |
+
+### 10.4 Operating guidance
+
+1. Keep `minReplicas=1` only while the link is being shared; otherwise use 0.
+2. Review Cost Management weekly while `gpt-5.2` is deployed.
+3. Treat a forecast alert as a prompt to scale to zero or delete the stack.
+
+## 11. Testing strategy
 
 | Area | Tests |
 | --- | --- |
@@ -445,7 +501,7 @@ flowchart TB
 | Cache refresh and retry behavior | [tests/test_cache.py](../tests/test_cache.py) |
 | Bicep and container build | CI `validate` job |
 
-## 11. Requirement traceability
+## 12. Requirement traceability
 
 | Requirement | Design element |
 | --- | --- |
@@ -456,10 +512,10 @@ flowchart TB
 | FR-017, NFR-013 | Source isolated in `sources.py`; UI consumes a DataFrame |
 | NFR-006 to 006c | Section 8 |
 | NFR-008, NFR-009 | Observation vs retrieval time shown; no interpolation |
-| NFR-011, NFR-012 | Section 9; consumption hosting, token cap |
+| NFR-011, NFR-012 | Section 10; consumption hosting, budget, replica and token caps |
 | Deployment (6.3) | Section 7 |
 
-## 12. Design decisions
+## 13. Design decisions
 
 | # | Decision | Alternatives | Rationale |
 | --- | --- | --- | --- |
@@ -468,14 +524,15 @@ flowchart TB
 | D3 | AirNow `/aq/data/` | `ziplatlong` current readings | Only service giving history |
 | D4 | Managed identity for OpenAI | API key | No secret to store or rotate |
 | D5 | GitHub OIDC | Service principal secret | No long-lived credential |
-| D6 | `minReplicas=1` | Scale to zero | Keeps cache warm; accepted cost |
+| D6 | `minReplicas=1` by default, configurable | Scale to zero | Keeps cache warm; accepted cost, see section 10 |
 | D7 | Existing AI Services account in another resource group | New account | Reuse exam resource; needs cross-RG role and custom deploy role |
 | D8 | Fail loudly when a configured model errors | Silent fallback | Honesty about AI availability |
 
-## 13. Open items
+## 14. Open items
 
 - Tracing and telemetry for AI calls (DP-55).
 - Groundedness evaluation set (DP-56).
 - Persisting AirNow history (DP-54).
-- Budget alerts (DP-52).
+- Budget alerts (DP-52): implemented in the Bicep; close after deployment.
+- Per-session summary rate limit.
 - Verifying the production deployment of the real-data release (DP-53).
